@@ -2,6 +2,8 @@
 
 Neo RAG-Anything is a local Windows document RAG app with a browser GUI, native launcher, upload indexing, hybrid search, and optional model-based answer writing.
 
+![Neo RAG-Anything query workflow](Neo-RAG-Anything-Architecture.png)
+
 ## Quick Start
 
 Download or clone this folder, then use one of the launch options below.
