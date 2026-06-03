@@ -45,6 +45,12 @@ The ready-to-use Windows package is:
 Neo-RAG-Anything-Windows.zip
 ```
 
+Download it from:
+
+```text
+https://github.com/diazneoones82/Neo-RAG-Anything/releases/tag/v1.0.0
+```
+
 To use it on a Windows desktop:
 
 1. Download the ZIP.
