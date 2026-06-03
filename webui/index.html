@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Neo RAG-Anything</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Neo local RAG console</p>
+        <h1>Multimodal RAG Workspace</h1>
+      </div>
+      <div class="topbar-actions">
+        <div class="stats" aria-live="polite">
+          <span><strong id="docCount">0</strong> docs</span>
+          <span><strong id="chunkCount">0</strong> chunks</span>
+        </div>
+        <button id="pageRefreshBtn" class="refresh-button" type="button" title="Refresh page" aria-label="Refresh page">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M20 12a8 8 0 1 1-2.34-5.66M20 4v6h-6" />
+          </svg>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </header>
+
+    <main class="shell">
+      <aside class="sidebar">
+        <section class="panel upload-panel">
+          <div class="panel-head">
+            <h2>Ingest</h2>
+            <span id="uploadState">Idle</span>
+          </div>
+          <div class="storage-row">
+            <label>Storage folder <input id="storageDir" placeholder="D:\RAGData" /></label>
+            <button id="saveStorageBtn" class="secondary" type="button">Save</button>
+          </div>
+          <div class="portable-row">
+            <button id="exportIndexBtn" class="secondary" type="button">Export Ingest ZIP</button>
+            <label class="import-label" for="importIndexInput">Import Ingest ZIP</label>
+            <input id="importIndexInput" type="file" accept=".zip,application/zip" hidden />
+          </div>
+          <button id="rebuildVectorBtn" class="secondary full-width" type="button">Rebuild Vector Index</button>
+          <label class="dropzone" for="fileInput" id="dropzone">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M12 3v11m0-11 4 4m-4-4-4 4M4 14v5h16v-5" />
+            </svg>
+            <span>Drop files here or choose documents</span>
+            <small>PDF, Word, text, Markdown, and images</small>
+          </label>
+          <input id="fileInput" type="file" multiple hidden />
+          <input id="folderInput" type="file" webkitdirectory directory multiple hidden />
+          <div class="ingest-actions">
+            <label class="picker-button" for="fileInput">Choose Files</label>
+            <label class="picker-button" for="folderInput">Choose Folder</label>
+          </div>
+          <div class="ingest-progress" aria-live="polite">
+            <div class="progress-meta">
+              <span id="progressLabel">Waiting for files</span>
+              <span id="progressCount">0%</span>
+            </div>
+            <progress id="ingestProgress" max="100" value="0"></progress>
+            <span id="progressDetail">No ingest running.</span>
+          </div>
+
+          <div class="controls">
+            <label>
+              Parser route
+              <select id="strategy">
+                <option>Recursive</option>
+                <option>Paragraph</option>
+                <option>Fixed</option>
+              </select>
+            </label>
+            <label>
+              Search mode
+              <select id="retrievalMode">
+                <option value="hybrid">Hybrid</option>
+                <option value="lexical">Lexical</option>
+                <option value="semantic">Semantic</option>
+              </select>
+            </label>
+            <label>
+              Chunk size
+              <input id="chunkSize" type="number" min="180" max="1600" step="40" value="520" />
+            </label>
+            <label>
+              Overlap
+              <input id="overlap" type="number" min="0" max="400" step="20" value="80" />
+            </label>
+          </div>
+
+          <div class="mode-grid">
+            <label><input type="checkbox" checked disabled /> Text blocks</label>
+            <label><input type="checkbox" checked disabled /> Images/OCR</label>
+            <label><input type="checkbox" checked disabled /> Tables as text</label>
+            <label><input type="checkbox" checked disabled /> Equation text</label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h2>Documents</h2>
+            <button id="clearBtn" class="icon-button" title="Clear index" aria-label="Clear index">
+              <svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13" /></svg>
+            </button>
+          </div>
+          <div id="docList" class="doc-list"></div>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <div class="pipeline">
+          <div><span>01</span> Parse</div>
+          <div><span>02</span> Route modalities</div>
+          <div><span>03</span> Chunk and index</div>
+          <div><span>04</span> Retrieve and answer</div>
+        </div>
+
+        <section class="query-surface">
+          <div class="ask-row">
+            <textarea id="question" rows="3" placeholder="Ask across uploaded documents..."></textarea>
+            <button id="askBtn" class="primary">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 14-7-4 14-3-6-7-1z" /></svg>
+              Ask
+            </button>
+          </div>
+          <div class="answer-options">
+            <label>
+              Response engine
+              <select id="engine">
+                <option value="local">Local extractive</option>
+                <option value="ollama">Ollama</option>
+                <option value="huggingface">Hugging Face</option>
+                <option value="openrouter">OpenRouter</option>
+              </select>
+            </label>
+            <label>Ollama model <input id="ollamaModel" value="llama3.2" /></label>
+            <label>
+              HF provider
+              <select id="hfProvider">
+                <option value="model">Use model suffix</option>
+                <option value="sambanova">SambaNova</option>
+                <option value="groq">Groq</option>
+                <option value="nscale">Nscale</option>
+                <option value="scaleway">Scaleway</option>
+                <option value="hyperbolic">Hyperbolic</option>
+                <option value="together">Together</option>
+                <option value="novita">Novita</option>
+                <option value="deepinfra">DeepInfra</option>
+                <option value="auto">Auto fallback</option>
+              </select>
+            </label>
+            <label>
+              HF model preset
+              <select id="hfPreset">
+                <option value="auto-best|model">Auto best fallback</option>
+                <option value="meta-llama/Llama-3.3-70B-Instruct:sambanova|model">Fast accurate RAG - Llama 3.3 70B</option>
+                <option value="Qwen/Qwen3-32B:groq|model">Fast concise RAG - Qwen3 32B</option>
+                <option value="meta-llama/Llama-4-Scout-17B-16E-Instruct:groq|model">Very fast long-context - Llama 4 Scout</option>
+                <option value="deepseek-ai/DeepSeek-R1:sambanova|model">DeepSeek full reasoning - R1</option>
+                <option value="deepseek-ai/DeepSeek-R1:hyperbolic|model">DeepSeek R1 alternate</option>
+                <option value="deepseek-ai/DeepSeek-R1-Distill-Qwen-14B:nscale|model">DeepSeek fast distill - Qwen 14B</option>
+                <option value="deepseek-ai/DeepSeek-R1-Distill-Llama-70B:scaleway|model">DeepSeek strong distill - Llama 70B</option>
+              </select>
+            </label>
+            <label>HF model <input id="hfModel" value="auto-best" /></label>
+            <label>HF token <input id="hfToken" type="password" placeholder="HF_TOKEN or paste token" /></label>
+            <button id="saveTokenBtn" class="secondary" type="button">Save HF</button>
+            <label>OpenRouter model <input id="openrouterModel" value="deepseek/deepseek-r1:free" /></label>
+            <label>
+              OR preset
+              <select id="openrouterPreset">
+                <option value="deepseek/deepseek-r1:free">DeepSeek R1 free then fallback</option>
+                <option value="openrouter/free">Auto free router</option>
+                <option value="deepseek/deepseek-r1-0528:free">DeepSeek R1 0528 free</option>
+                <option value="deepseek/deepseek-r1-distill-llama-70b:free">DeepSeek R1 distill Llama 70B free</option>
+                <option value="qwen/qwen3-32b:free">Qwen3 32B free</option>
+                <option value="meta-llama/llama-3.3-70b-instruct:free">Llama 3.3 70B free</option>
+              </select>
+            </label>
+            <label>OpenRouter token <input id="openrouterToken" type="password" placeholder="OpenRouter token" /></label>
+            <button id="saveOpenRouterBtn" class="secondary" type="button">Save OR</button>
+            <label>Contexts <input id="limit" type="number" min="2" max="20" value="15" /></label>
+          </div>
+          <div class="token-status" id="tokenStatus">Saved tokens loaded: checking...</div>
+          <div class="token-status" id="searchCacheStatus">Search cache: checking...</div>
+          <div class="token-status" id="vectorStatus">Vector index: checking...</div>
+          <div class="web-row">
+            <label><input id="useVector" type="checkbox" checked /> Use Chroma vector search in Hybrid</label>
+            <label><input id="preferExact" type="checkbox" checked /> Prefer exact phrase / command matches</label>
+            <label><input id="includeWeb" type="checkbox" /> Append internet results after local RAG answer</label>
+          </div>
+        </section>
+
+        <section class="results">
+          <div class="answer">
+            <div class="panel-head">
+              <h2>Answer</h2>
+              <span id="answerMode">Local retrieval</span>
+            </div>
+            <pre id="answerText">Upload documents, then ask a question. The answer will stay grounded in retrieved chunks.</pre>
+          </div>
+          <div class="contexts">
+            <div class="panel-head">
+              <h2>Retrieved Context</h2>
+              <span id="contextCount">0</span>
+            </div>
+            <div id="contexts"></div>
+          </div>
+          <div class="contexts">
+            <div class="panel-head">
+              <h2>Internet Results</h2>
+              <span id="webCount">0</span>
+            </div>
+            <div id="webResults"></div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
