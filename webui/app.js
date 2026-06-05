@@ -52,11 +52,21 @@ async function api(path, options = {}) {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
-  const payload = await response.json();
+  const payload = await readResponsePayload(response);
   if (!response.ok || payload.ok === false) {
     throw new Error(payload.error || `Request failed: ${response.status}`);
   }
   return payload;
+}
+
+async function readResponsePayload(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: response.ok, error: text || `Request failed: ${response.status}` };
+  }
 }
 
 async function refresh() {
@@ -452,7 +462,7 @@ importIndexInput.addEventListener("change", async () => {
       method: "POST",
       body: form,
     });
-    const payload = await response.json();
+    const payload = await readResponsePayload(response);
     if (!response.ok || payload.ok === false) {
       throw new Error(payload.error || `Import failed: ${response.status}`);
     }

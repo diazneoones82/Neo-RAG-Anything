@@ -43,6 +43,12 @@ ROOT = Path(__file__).resolve().parent
 STATIC_DIR = Path(getattr(__import__("sys"), "_MEIPASS", ROOT)) / "webui"
 
 
+class ClientRequestError(RuntimeError):
+    def __init__(self, message: str, status: int = 400) -> None:
+        super().__init__(message)
+        self.status = status
+
+
 class State:
     def __init__(self) -> None:
         self.lock = threading.Lock()
@@ -101,6 +107,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._handle_import()
             if self.path == "/api/rebuild-vector":
                 return self._handle_rebuild_vector()
+        except ClientRequestError as exc:
+            return self._send_json({"ok": False, "error": str(exc)}, status=exc.status)
         except Exception as exc:
             return self._send_json({"ok": False, "error": str(exc)}, status=500)
         self.send_error(404, "Not found")
@@ -185,17 +193,20 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _handle_import(self) -> None:
         content_type = self.headers.get("Content-Type", "")
-        if content_type.startswith("multipart/form-data"):
-            fields, files = self._read_multipart_upload(content_type)
-            upload = files[0] if files else {}
-            name = safe_name(str(upload.get("name") or fields.get("name") or "rag-index.zip"))
-            data = upload.get("data") or b""
-        else:
-            payload = self._read_json()
-            name = safe_name(str(payload.get("name") or "rag-index.zip"))
-            data = base64.b64decode(str(payload.get("content") or ""))
+        try:
+            if content_type.startswith("multipart/form-data"):
+                fields, files = self._read_multipart_upload(content_type)
+                upload = files[0] if files else {}
+                name = safe_name(str(upload.get("name") or fields.get("name") or "rag-index.zip"))
+                data = upload.get("data") or b""
+            else:
+                payload = self._read_json()
+                name = safe_name(str(payload.get("name") or "rag-index.zip"))
+                data = base64.b64decode(str(payload.get("content") or ""))
+        except Exception as exc:
+            raise ClientRequestError(f"Import ZIP could not be read from the browser upload: {exc}") from exc
         if not data:
-            return self._send_json({"ok": False, "error": "Import zip is empty."}, status=400)
+            raise ClientRequestError("Import ZIP is empty or the browser could not read the selected file.")
         set_upload_progress(
             {
                 "active": True,
@@ -209,35 +220,47 @@ class Handler(SimpleHTTPRequestHandler):
             }
         )
         target_root = configure_storage()
+        try:
+            target_root.mkdir(parents=True, exist_ok=True)
+            probe = target_root / "_write_test.tmp"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+        except Exception as exc:
+            raise ClientRequestError(f"Active storage folder is not writable: {target_root}. Choose a folder like C:\\RAGData or D:\\RAGData, then save it and import again. Details: {exc}") from exc
         with STATE.lock:
             STATE.store.close_vector_store()
             STATE.store.close_search_cache()
         gc.collect()
         temp_zip = target_root / "_import.zip"
         temp_dir = target_root / "_import_work"
-        temp_zip.write_bytes(data)
-        if temp_dir.exists():
-            shutil.rmtree(temp_dir)
-        temp_dir.mkdir(parents=True, exist_ok=True)
         try:
+            try:
+                temp_zip.write_bytes(data)
+            except Exception as exc:
+                raise ClientRequestError(f"Could not stage import ZIP in storage folder {target_root}: {exc}") from exc
+            if temp_dir.exists():
+                shutil.rmtree(temp_dir)
+            temp_dir.mkdir(parents=True, exist_ok=True)
             set_upload_progress({"active": True, "phase": "Validating ZIP", "done": 1, "percent": 20})
             try:
                 with zipfile.ZipFile(temp_zip) as archive:
+                    if not archive.infolist():
+                        raise ClientRequestError("Import ZIP has no files. Use a ZIP created by Export ingest folder.")
                     for member in archive.infolist():
                         destination = (temp_dir / member.filename).resolve()
                         if not str(destination).startswith(str(temp_dir.resolve())):
-                            raise RuntimeError(f"Unsafe zip entry: {member.filename}")
+                            raise ClientRequestError(f"Unsafe zip entry: {member.filename}")
                     archive.extractall(temp_dir)
             except RuntimeError as exc:
                 if "encrypted" in str(exc).lower() or "password" in str(exc).lower():
-                    raise RuntimeError("Import ZIP could not be read because it is password protected. Use an ingest export ZIP, not the protected Windows app package.") from exc
+                    raise ClientRequestError("Import ZIP could not be read because it is password protected. Use an ingest export ZIP, not the protected Windows app package.") from exc
                 raise
             except zipfile.BadZipFile as exc:
-                raise RuntimeError("Import file could not be read as a ZIP. Use a ZIP created by Export ingest folder.") from exc
+                raise ClientRequestError("Import file could not be read as a ZIP. Use a ZIP created by Export ingest folder.") from exc
             set_upload_progress({"active": True, "phase": "Locating index", "done": 2, "percent": 40})
             import_root = find_import_root(temp_dir)
             if not (import_root / "index.json").exists():
-                raise RuntimeError(f"{name} does not contain an index.json file.")
+                raise ClientRequestError(f"{name} does not contain an index.json file. Import expects a ZIP created by Export ingest folder, not the Windows app ZIP.")
             preserve_config = target_root / "config.json"
             set_upload_progress({"active": True, "phase": "Replacing storage data", "done": 3, "percent": 60})
             for item in list(target_root.iterdir()):
