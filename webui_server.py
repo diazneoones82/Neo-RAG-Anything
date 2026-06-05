@@ -194,15 +194,22 @@ class Handler(SimpleHTTPRequestHandler):
     def _handle_import(self) -> None:
         content_type = self.headers.get("Content-Type", "")
         try:
-            if content_type.startswith("multipart/form-data"):
+            if content_type.startswith("application/zip") or content_type.startswith("application/octet-stream"):
+                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+                name = safe_name(str((query.get("name") or ["rag-index.zip"])[0] or "rag-index.zip"))
+                length = int(self.headers.get("Content-Length", "0") or "0")
+                data = self.rfile.read(length) if length > 0 else b""
+            elif content_type.startswith("multipart/form-data"):
                 fields, files = self._read_multipart_upload(content_type)
                 upload = files[0] if files else {}
                 name = safe_name(str(upload.get("name") or fields.get("name") or "rag-index.zip"))
                 data = upload.get("data") or b""
-            else:
+            elif content_type.startswith("application/json"):
                 payload = self._read_json()
                 name = safe_name(str(payload.get("name") or "rag-index.zip"))
                 data = base64.b64decode(str(payload.get("content") or ""))
+            else:
+                raise ClientRequestError(f"Unsupported import upload content type: {content_type or 'missing'}. Select an ingest export ZIP from the Import button.")
         except Exception as exc:
             raise ClientRequestError(f"Import ZIP could not be read from the browser upload: {exc}") from exc
         if not data:

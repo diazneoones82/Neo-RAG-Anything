@@ -455,12 +455,10 @@ importIndexInput.addEventListener("change", async () => {
   });
   const progressTimer = window.setInterval(() => pollUploadProgress().catch(() => {}), 650);
   try {
-    const form = new FormData();
-    form.append("name", file.name);
-    form.append("files", file, file.name);
-    const response = await fetch("/api/import", {
+    const response = await fetch(`/api/import?name=${encodeURIComponent(file.name)}`, {
       method: "POST",
-      body: form,
+      headers: { "Content-Type": "application/zip" },
+      body: file,
     });
     const payload = await readResponsePayload(response);
     if (!response.ok || payload.ok === false) {
