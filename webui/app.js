@@ -445,11 +445,17 @@ importIndexInput.addEventListener("change", async () => {
   });
   const progressTimer = window.setInterval(() => pollUploadProgress().catch(() => {}), 650);
   try {
-    const content = await readAsBase64(file);
-    const payload = await api("/api/import", {
+    const form = new FormData();
+    form.append("name", file.name);
+    form.append("files", file, file.name);
+    const response = await fetch("/api/import", {
       method: "POST",
-      body: JSON.stringify({ name: file.name, content }),
+      body: form,
     });
+    const payload = await response.json();
+    if (!response.ok || payload.ok === false) {
+      throw new Error(payload.error || `Import failed: ${response.status}`);
+    }
     answerText.textContent = payload.message || "Index imported.";
     await refresh();
   } catch (error) {

@@ -184,9 +184,16 @@ class Handler(SimpleHTTPRequestHandler):
         return self._send_json({"ok": True, "results": results, "status": status_payload()})
 
     def _handle_import(self) -> None:
-        payload = self._read_json()
-        name = safe_name(str(payload.get("name") or "rag-index.zip"))
-        data = base64.b64decode(str(payload.get("content") or ""))
+        content_type = self.headers.get("Content-Type", "")
+        if content_type.startswith("multipart/form-data"):
+            fields, files = self._read_multipart_upload(content_type)
+            upload = files[0] if files else {}
+            name = safe_name(str(upload.get("name") or fields.get("name") or "rag-index.zip"))
+            data = upload.get("data") or b""
+        else:
+            payload = self._read_json()
+            name = safe_name(str(payload.get("name") or "rag-index.zip"))
+            data = base64.b64decode(str(payload.get("content") or ""))
         if not data:
             return self._send_json({"ok": False, "error": "Import zip is empty."}, status=400)
         set_upload_progress(
@@ -214,12 +221,19 @@ class Handler(SimpleHTTPRequestHandler):
         temp_dir.mkdir(parents=True, exist_ok=True)
         try:
             set_upload_progress({"active": True, "phase": "Validating ZIP", "done": 1, "percent": 20})
-            with zipfile.ZipFile(temp_zip) as archive:
-                for member in archive.infolist():
-                    destination = (temp_dir / member.filename).resolve()
-                    if not str(destination).startswith(str(temp_dir.resolve())):
-                        raise RuntimeError(f"Unsafe zip entry: {member.filename}")
-                archive.extractall(temp_dir)
+            try:
+                with zipfile.ZipFile(temp_zip) as archive:
+                    for member in archive.infolist():
+                        destination = (temp_dir / member.filename).resolve()
+                        if not str(destination).startswith(str(temp_dir.resolve())):
+                            raise RuntimeError(f"Unsafe zip entry: {member.filename}")
+                    archive.extractall(temp_dir)
+            except RuntimeError as exc:
+                if "encrypted" in str(exc).lower() or "password" in str(exc).lower():
+                    raise RuntimeError("Import ZIP could not be read because it is password protected. Use an ingest export ZIP, not the protected Windows app package.") from exc
+                raise
+            except zipfile.BadZipFile as exc:
+                raise RuntimeError("Import file could not be read as a ZIP. Use a ZIP created by Export ingest folder.") from exc
             set_upload_progress({"active": True, "phase": "Locating index", "done": 2, "percent": 40})
             import_root = find_import_root(temp_dir)
             if not (import_root / "index.json").exists():
