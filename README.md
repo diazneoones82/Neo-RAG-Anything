@@ -296,3 +296,7 @@ Then open:
 ```text
 http://127.0.0.1:7861
 ```
+
+## License
+
+Neo RAG-Anything is proprietary software. The code, binaries, documentation, artwork, and related assets cannot be modified, reused, redistributed, or republished without prior written permission from the owner.
