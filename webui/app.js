@@ -14,6 +14,7 @@ const storageDir = document.querySelector("#storageDir");
 const saveStorageBtn = document.querySelector("#saveStorageBtn");
 const exportIndexBtn = document.querySelector("#exportIndexBtn");
 const importIndexInput = document.querySelector("#importIndexInput");
+const importFolderBtn = document.querySelector("#importFolderBtn");
 const rebuildVectorBtn = document.querySelector("#rebuildVectorBtn");
 const strategy = document.querySelector("#strategy");
 const retrievalMode = document.querySelector("#retrievalMode");
@@ -455,11 +456,16 @@ importIndexInput.addEventListener("change", async () => {
   });
   const progressTimer = window.setInterval(() => pollUploadProgress().catch(() => {}), 650);
   try {
-    const response = await fetch(`/api/import?name=${encodeURIComponent(file.name)}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/zip" },
-      body: file,
-    });
+    let response;
+    try {
+      response = await fetch(`/api/import?name=${encodeURIComponent(file.name)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/zip" },
+        body: file,
+      });
+    } catch (error) {
+      throw new Error(`Import upload could not reach the local GUI service. Keep this page open, confirm the app is still running, and try again. Details: ${error.message || error}`);
+    }
     const payload = await readResponsePayload(response);
     if (!response.ok || payload.ok === false) {
       throw new Error(payload.error || `Import failed: ${response.status}`);
@@ -471,6 +477,50 @@ importIndexInput.addEventListener("change", async () => {
   } finally {
     window.clearInterval(progressTimer);
     importIndexInput.value = "";
+  }
+});
+
+importFolderBtn.addEventListener("click", async () => {
+  const folder = storageDir.value.trim();
+  if (!folder) {
+    showError(new Error("Enter the extracted ingest folder path in Storage folder first."));
+    return;
+  }
+  if (!confirm("Use this extracted ingest folder as the active storage folder?")) {
+    return;
+  }
+  importFolderBtn.disabled = true;
+  answerMode.textContent = "Import folder";
+  answerText.textContent = "Validating extracted ingest folder...";
+  updateIngestProgress({
+    phase: "Validating extracted folder",
+    current: folder,
+    done: 0,
+    total: 1,
+    percent: 0,
+    ok: 0,
+    failed: 0,
+  });
+  try {
+    const payload = await api("/api/import-folder", {
+      method: "POST",
+      body: JSON.stringify({ folder }),
+    });
+    answerText.textContent = payload.message || "Extracted ingest folder loaded.";
+    updateIngestProgress({
+      phase: "Extracted folder loaded",
+      current: payload.status?.storage_dir || folder,
+      done: 1,
+      total: 1,
+      percent: 100,
+      ok: 1,
+      failed: 0,
+    });
+    await refresh();
+  } catch (error) {
+    showError(error);
+  } finally {
+    importFolderBtn.disabled = false;
   }
 });
 

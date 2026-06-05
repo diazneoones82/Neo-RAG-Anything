@@ -221,7 +221,7 @@ label,
 }
 
 .portable-row {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   margin-bottom: 12px;
 }
 

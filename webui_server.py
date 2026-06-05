@@ -103,7 +103,9 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._send_json(status_payload())
             if self.path == "/api/settings":
                 return self._handle_settings()
-            if self.path == "/api/import":
+            if self.path == "/api/import-folder":
+                return self._handle_import_folder()
+            if self.path.startswith("/api/import"):
                 return self._handle_import()
             if self.path == "/api/rebuild-vector":
                 return self._handle_rebuild_vector()
@@ -193,27 +195,44 @@ class Handler(SimpleHTTPRequestHandler):
 
     def _handle_import(self) -> None:
         content_type = self.headers.get("Content-Type", "")
+        query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+        name = safe_name(str((query.get("name") or ["rag-index.zip"])[0] or "rag-index.zip"))
+        target_root = configure_storage()
+        try:
+            target_root.mkdir(parents=True, exist_ok=True)
+            probe = target_root / "_write_test.tmp"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+        except Exception as exc:
+            raise ClientRequestError(f"Active storage folder is not writable: {target_root}. Choose a folder like C:\\RAGData or D:\\RAGData, then save it and import again. Details: {exc}") from exc
+        temp_zip = target_root / "_import.zip"
+        temp_dir = target_root / "_import_work"
         try:
             if content_type.startswith("application/zip") or content_type.startswith("application/octet-stream"):
-                query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-                name = safe_name(str((query.get("name") or ["rag-index.zip"])[0] or "rag-index.zip"))
                 length = int(self.headers.get("Content-Length", "0") or "0")
-                data = self.rfile.read(length) if length > 0 else b""
+                if length <= 0:
+                    raise ClientRequestError("Import ZIP is empty or the browser did not send a file size.")
+                with temp_zip.open("wb") as handle:
+                    copy_request_body(self.rfile, handle, length)
             elif content_type.startswith("multipart/form-data"):
                 fields, files = self._read_multipart_upload(content_type)
                 upload = files[0] if files else {}
                 name = safe_name(str(upload.get("name") or fields.get("name") or "rag-index.zip"))
                 data = upload.get("data") or b""
+                if not data:
+                    raise ClientRequestError("Import ZIP is empty or the browser could not read the selected file.")
+                temp_zip.write_bytes(data)
             elif content_type.startswith("application/json"):
                 payload = self._read_json()
                 name = safe_name(str(payload.get("name") or "rag-index.zip"))
                 data = base64.b64decode(str(payload.get("content") or ""))
+                if not data:
+                    raise ClientRequestError("Import ZIP is empty or the browser could not read the selected file.")
+                temp_zip.write_bytes(data)
             else:
                 raise ClientRequestError(f"Unsupported import upload content type: {content_type or 'missing'}. Select an ingest export ZIP from the Import button.")
         except Exception as exc:
             raise ClientRequestError(f"Import ZIP could not be read from the browser upload: {exc}") from exc
-        if not data:
-            raise ClientRequestError("Import ZIP is empty or the browser could not read the selected file.")
         set_upload_progress(
             {
                 "active": True,
@@ -226,25 +245,11 @@ class Handler(SimpleHTTPRequestHandler):
                 "failed": 0,
             }
         )
-        target_root = configure_storage()
-        try:
-            target_root.mkdir(parents=True, exist_ok=True)
-            probe = target_root / "_write_test.tmp"
-            probe.write_text("ok", encoding="utf-8")
-            probe.unlink(missing_ok=True)
-        except Exception as exc:
-            raise ClientRequestError(f"Active storage folder is not writable: {target_root}. Choose a folder like C:\\RAGData or D:\\RAGData, then save it and import again. Details: {exc}") from exc
         with STATE.lock:
             STATE.store.close_vector_store()
             STATE.store.close_search_cache()
         gc.collect()
-        temp_zip = target_root / "_import.zip"
-        temp_dir = target_root / "_import_work"
         try:
-            try:
-                temp_zip.write_bytes(data)
-            except Exception as exc:
-                raise ClientRequestError(f"Could not stage import ZIP in storage folder {target_root}: {exc}") from exc
             if temp_dir.exists():
                 shutil.rmtree(temp_dir)
             temp_dir.mkdir(parents=True, exist_ok=True)
@@ -320,6 +325,43 @@ class Handler(SimpleHTTPRequestHandler):
             }
         )
         return self._send_json({"ok": True, "message": "Index imported.", "status": status_payload()})
+
+    def _handle_import_folder(self) -> None:
+        payload = self._read_json()
+        folder = Path(str(payload.get("folder") or "")).expanduser()
+        if not str(folder).strip():
+            raise ClientRequestError("Enter the extracted ingest folder path first.")
+        try:
+            folder = folder.resolve()
+        except Exception as exc:
+            raise ClientRequestError(f"Could not resolve folder path: {exc}") from exc
+        if not folder.exists() or not folder.is_dir():
+            raise ClientRequestError(f"Folder does not exist: {folder}")
+        import_root = find_existing_import_root(folder)
+        if not (import_root / "index.json").exists():
+            raise ClientRequestError(f"Folder does not contain index.json: {folder}")
+        try:
+            probe = import_root / "_write_test.tmp"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+        except Exception as exc:
+            raise ClientRequestError(f"Extracted ingest folder is not writable: {import_root}. Details: {exc}") from exc
+
+        config = load_app_config()
+        configure_storage(import_root)
+        config["storage_dir"] = str(import_root)
+        save_app_config(config)
+        with STATE.lock:
+            STATE.store.close_vector_store()
+            STATE.store.close_search_cache()
+            STATE.store = RAGStore()
+        return self._send_json(
+            {
+                "ok": True,
+                "message": f"Using extracted ingest folder:\n{import_root}",
+                "status": status_payload(),
+            }
+        )
 
     def _handle_rebuild_vector(self) -> None:
         def vector_progress(done: int, total: int, phase: str) -> None:
@@ -461,6 +503,7 @@ class Handler(SimpleHTTPRequestHandler):
             if storage_dir:
                 configure_storage(storage_dir)
                 config["storage_dir"] = str(Path(storage_dir).expanduser().resolve())
+                save_app_config(config)
                 with STATE.lock:
                     STATE.store.close_vector_store()
                     STATE.store.close_search_cache()
@@ -563,7 +606,7 @@ class Handler(SimpleHTTPRequestHandler):
     def _read_json(self) -> dict[str, Any]:
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length)
-        return json.loads(raw.decode("utf-8") or "{}")
+        return json.loads(raw.decode("utf-8-sig") or "{}")
 
     def _read_multipart_upload(self, content_type: str) -> tuple[dict[str, str], list[dict[str, Any]]]:
         length = int(self.headers.get("Content-Length", "0"))
@@ -990,6 +1033,26 @@ def find_import_root(temp_dir: Path) -> Path:
     if not candidates:
         return temp_dir
     return candidates[0].parent
+
+
+def find_existing_import_root(folder: Path) -> Path:
+    if (folder / "index.json").exists():
+        return folder
+    candidates = [path for path in folder.rglob("index.json") if path.is_file()]
+    if not candidates:
+        return folder
+    candidates.sort(key=lambda path: len(path.relative_to(folder).parts))
+    return candidates[0].parent
+
+
+def copy_request_body(source: Any, destination: Any, length: int) -> None:
+    remaining = length
+    while remaining > 0:
+        chunk = source.read(min(1024 * 1024, remaining))
+        if not chunk:
+            raise ClientRequestError("Browser upload ended before the full ZIP was received.")
+        destination.write(chunk)
+        remaining -= len(chunk)
 
 
 def main() -> None:

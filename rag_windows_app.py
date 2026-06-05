@@ -395,7 +395,7 @@ class RAGStore:
     def load(self) -> None:
         if not INDEX_PATH.exists():
             return
-        data = json.loads(INDEX_PATH.read_text(encoding="utf-8"))
+        data = json.loads(INDEX_PATH.read_text(encoding="utf-8-sig"))
         self.documents = data.get("documents", [])
         self.chunks = data.get("chunks", [])
 
