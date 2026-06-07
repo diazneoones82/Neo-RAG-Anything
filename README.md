@@ -2,11 +2,19 @@
 
 Neo RAG-Anything is a local Windows document RAG app with a browser GUI, native launcher, upload indexing, hybrid search, and optional model-based answer writing.
 
+## Distribution And Permission
+
+Neo RAG-Anything is proprietary software. The public GitHub repository is intended for release downloads only.
+
+You may download and use the official Windows release ZIP. You may not copy, rebuild, recreate, modify, redistribute, reverse engineer, publish derivative works from, or reuse the code, binaries, documentation, artwork, or related assets without prior written permission from the copyright owner.
+
+Use of the code or assets outside the official release package requires separate written permission.
+
 ![Neo RAG-Anything query workflow](Neo-RAG-Anything-Architecture.png)
 
 ## Quick Start
 
-Download or clone this folder, then use one of the launch options below.
+Download the official Windows ZIP from the GitHub release page, extract it, then use the native launcher below.
 
 ### Option 1: Native Launcher
 
@@ -24,20 +32,6 @@ The launcher has:
 - **Open GUI**: opens the browser at `http://127.0.0.1:7860`.
 
 Closing the launcher stops the GUI service.
-
-### Option 2: Batch Launcher
-
-Run:
-
-```text
-start_gui.bat
-```
-
-This installs Python requirements if needed, starts the local service, and opens:
-
-```text
-http://127.0.0.1:7860
-```
 
 ## Windows ZIP Release
 
@@ -80,12 +74,22 @@ You can change this from the GUI with **Storage folder** and **Save**.
 
 Uploads use multipart file transfer, so large PDFs are sent as files instead of being converted into huge browser strings. Folder ingest sends files one at a time so large PDF folders show steady progress and do not stall as one oversized browser request.
 
+You can also ingest web content from the same area:
+
+- **Ingest Web Page**: enter a full `http://` or `https://` page URL and index that page as a saved HTML source.
+- **Ingest Web Category**: enter a category/archive URL and the app crawls paginated category pages, collects article links from the same site, and indexes every discovered article page.
+- **Max pages** limits how many category/archive pages the crawler visits before it stops.
+- **Threads** controls how many discovered article pages download at the same time. Start around `8` to `12`; reduce it if a site rate-limits or blocks automated requests.
+
+Category ingestion uses parallel page downloads for speed, then writes the successful pages to `index.json`, SQLite FTS, and ChromaDB as a single batch. Retrieved references open the original web URL and the chunk text.
+
 Supported files:
 
 - PDF
 - Word `.docx`
 - legacy `.doc` if LibreOffice is installed
 - text and Markdown
+- HTML web pages
 - common image files
 
 ## Export And Import Ingest Data
@@ -153,6 +157,10 @@ The **Export Ingest ZIP** and **Import Ingest ZIP** controls include the `chroma
 
 When **Append internet results after local RAG answer** is enabled, the app searches public web results after local chunk retrieval. It tries multiple no-key providers in order: DuckDuckGo, Bing, then Google standard search fallback. If a provider blocks automated result HTML, the app moves to the next fallback. Hugging Face and OpenRouter still receive returned web snippets as extra context, and the visible answer also appends an **Internet results** section at the end.
 
+Enable **Focus internet search for z/OS Mainframe** when your question is about z/OS or mainframe content. The app keeps the full query text, adds strict z/OS/Mainframe/IBM context, and uses exact command variants for command-style questions.
+
+For command-style questions such as `setxcf start,reallocate`, the focused search uses exact quoted command variants, prefers IBM documentation oriented queries, and tries Google/DuckDuckGo before Bing so generic web results are less likely to dominate.
+
 ## Asking Questions
 
 - Press **Enter** to ask.
@@ -199,16 +207,25 @@ Saved tokens loaded already: Hugging Face
 Choose `OpenRouter`. The default model is:
 
 ```text
-deepseek/deepseek-r1:free
+poolside/laguna-m.1-20260312:free
 ```
 
-If that route has no endpoint, the app automatically falls back through free presets, including:
+Available OpenRouter presets include:
 
+- `poolside/laguna-m.1-20260312:free`
 - `openrouter/free`
-- `deepseek/deepseek-r1-0528:free`
-- `deepseek/deepseek-r1-distill-llama-70b:free`
-- `qwen/qwen3-32b:free`
-- `meta-llama/llama-3.3-70b-instruct:free`
+- `openai/gpt-oss-20b:free`
+- `nvidia/nemotron-nano-9b-v2:free`
+- `liquid/lfm-2.5-1.2b-instruct-20260120:free`
+- `z-ai/glm-4.5-air:free`
+
+When `openrouter/free` is selected, the app tries only this free-route sequence:
+
+1. `openai/gpt-oss-20b:free`
+2. `liquid/lfm-2.5-1.2b-instruct-20260120:free`
+3. `nvidia/nemotron-nano-9b-v2:free`
+4. `nvidia/nemotron-nano-9b-v2:free`
+5. `z-ai/glm-4.5-air:free`
 
 Paste your OpenRouter key into **OpenRouter token** and click **Save OR**.
 
@@ -296,7 +313,3 @@ Then open:
 ```text
 http://127.0.0.1:7861
 ```
-
-## License
-
-Neo RAG-Anything is proprietary software. The code, binaries, documentation, artwork, and related assets cannot be modified, reused, redistributed, or republished without prior written permission from the owner.
