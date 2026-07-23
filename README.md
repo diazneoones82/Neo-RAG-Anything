@@ -10,8 +10,6 @@ You may download and use the official Windows release ZIP. You may not copy, reb
 
 Use of the code or assets outside the official release package requires separate written permission.
 
-![Neo RAG-Anything query workflow](architecture-workflow.png)
-
 ## Quick Start
 
 Download the official Windows ZIP from the GitHub release page, extract it, then use the native launcher below.
