@@ -1,0 +1,34 @@
+# Local Python and build output
+__pycache__/
+*.pyc
+build/
+dist/
+package/
+*.spec
+
+# Local runtime logs
+*.log
+webui_server.err.log
+webui_server.log
+
+# Local ingest/index data. These can contain private documents and API tokens.
+store/
+sources/
+chroma/
+web_uploads/
+index.json
+search_cache.sqlite
+search_cache.sqlite-*
+config.json
+*.env
+
+# Large local test/export data
+backups/
+tmp_*/
+*_localappdata/
+*_input/
+*.sqlite
+*.sqlite-*
+
+# Release ZIPs are uploaded as GitHub Release assets, not committed to git.
+*.zip

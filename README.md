@@ -4,8 +4,7 @@ Neo RAG-Anything is a local Windows document RAG app for indexing documents,
 searching retrieved context, and asking grounded questions through a browser GUI
 or desktop launcher.
 
-This public repository is for release downloads only. Source code and build
-instructions are not distributed from this repository.
+Source code and build scripts recovered from commit `56c16e2` are available in this repository. This is the last source revision before the repository became release-only; it is not verified to match the newer Free release binaries.
 
 ## Download
 
@@ -65,3 +64,14 @@ This software is provided without any warranty. Third-party components, models, 
 
 
 Copyright (c) 2026 diazneoones82.
+
+## Build from source
+
+Install Python 3 and run the following in the repository folder:
+
+```powershell
+python -m pip install -r requirements.txt
+.\build_windows.ps1
+```
+
+The Windows executable is written to `dist/Neo RAG-Anything.exe`. See `build_launcher.ps1` for packaging details. The recovered source has not been rebuilt or runtime-tested in this session.
