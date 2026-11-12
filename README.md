@@ -58,9 +58,10 @@ http://127.0.0.1:7860
 
 ## License
 
-Neo RAG-Anything is proprietary software.
+Original project code, documentation, and assets are licensed under the GNU General Public License, version 3 or (at your option) any later version (**GPL-3.0-or-later**). You may use, copy, modify, and redistribute them under those terms. See [LICENSE](LICENSE).
 
-You may download and use the official release package. You may not copy,
-rebuild, recreate, modify, redistribute, reverse engineer, publish derivative
-works from, or reuse the code, binaries, documentation, artwork, or related
-assets without prior written permission from the copyright owner.
+This software is provided without any warranty. Third-party components, models, and assets retain their own licenses and copyright notices; this grant does not relicense them.
+
+
+
+Copyright (c) 2026 diazneoones82.
